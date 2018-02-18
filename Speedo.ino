@@ -280,6 +280,36 @@ void drawMainScreen() {
   sprintf(buffer, "%02d%c%02d", hours, divider, minutes);
 
   lcd.print(buffer);
+
+  printTemp();
+}
+
+void printTemp() {
+  static int tAvg[8];
+  int mid = 0;
+  
+  int thInput = analogRead(2);
+  byte i = 7;
+  do {
+    tAvg[i] = tAvg[i-1];
+    mid += tAvg[i];
+    i--;
+  }while(i > 0);
+  mid += thInput; mid = mid >> 3;
+  tAvg[0] = thInput;
+    
+  float therm;
+  therm = 1023.0 / float(mid) - 1;
+  therm = SERIESRESISTOR / therm;
+  therm = log(therm / THERMISTORNOMINAL) / BCOEFFICIENT;
+  therm += 1.0 / (TEMPERATURENOMINAL + 273.15);
+  therm = 1.0 / therm;
+  therm -= 273.15;
+  
+  lcd.setCursor(0, 1);
+  sprintf(buffer, "%3d", int(therm));
+  lcd.print(buffer);
+  lcd.print(char(0xDF));
 }
 
 void drawSetupScreen() {
