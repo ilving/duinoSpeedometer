@@ -41,6 +41,8 @@ byte magnetCount = 0;
 float wheelSectorLength = 0; /* length of 1 sector, kilometers*/
 float currentSpeed;
 
+volatile unsigned int speedTickCounter = 0;
+
 /* Oiler variables */
 /*
    Interval:
@@ -86,7 +88,7 @@ boolean oilerStop(Task* self);
 void saveData(Task* self);
 void speedCalc(Task* self);
 
-Task DrawScreen(SCREEN_REFRESH_PERIOD, drawScreen);
+Task DrawScreen(200, drawScreen);
 Task ReadKey(20, readKey);
 Task SaveData(1000, saveData);
 
@@ -107,7 +109,7 @@ void setup() {
   }
   
   // just to test screen - fill it with white bars and blink
-  
+  randomSeed(analogRead(0));
   for (byte i = 0; i < 255; i++) {
     lcd.setCursor(random(LCD_X_SIZE), random(LCD_Y_SIZE));
     lcd.print(char(4));
@@ -138,26 +140,30 @@ void setup() {
 
 void speedCalc(Task* self) {
   static unsigned long lastTick = 0;
-  static float lastOdo = ttOdo.value;
   
   unsigned long timeDiff = millis() - lastTick;
-  float odoLen = ttOdo.value - lastOdo;
+  float odoLen = wheelSectorLength * float(speedTickCounter);
   
   lastTick = millis();
-  lastOdo = ttOdo.value;
+  speedTickCounter = 0;
   
   if (timeDiff == 0 || timeDiff >= 1000) {
     currentSpeed = 0;
   } else {
     currentSpeed = 3600000.0 * odoLen/float(timeDiff);
   }
+
+  
+  ttOdo.value += odoLen;
+  ttGas.value += odoLen;
+  ttTrip.value += odoLen;
 }
 
 void getWheelSectorLength() {
   if (magnetCount == 0) {
     wheelSectorLength = 0; 
   } else {
-  wheelSectorLength = float(float(wheelLength.value) / float(1000000 * magnetCount));
+    wheelSectorLength = float(float(wheelLength.value) / float(1000000 * magnetCount));
   }
 }
 
@@ -288,7 +294,7 @@ void printTemp() {
   static int tAvg[8];
   int mid = 0;
   
-  int thInput = analogRead(2);
+  int thInput = analogRead(3);
   byte i = 7;
   do {
     tAvg[i] = tAvg[i-1];
@@ -307,8 +313,13 @@ void printTemp() {
   therm -= 273.15;
   
   lcd.setCursor(0, 1);
-  sprintf(buffer, "%3d", int(therm));
-  lcd.print(buffer);
+
+  if (therm > -90 && therm < 150) {
+    sprintf(buffer, "%3d", int(therm));
+    lcd.print(buffer);
+  } else {
+    lcd.print(" E ");
+  }
   lcd.print(char(0xDF));
 }
 
@@ -440,7 +451,7 @@ void setupScreenKeypress(unsigned int keyPressed, unsigned long keyPressedTime, 
     case KEY_SELECT:
       if (keyPressedTime > KEY_LONG_PRESS_TIME && !keyStillPressed) {
         lcd.clear();
-        screenMode = SCREEN_MODE_MAIN;
+        screenMode = SCREEN_MODE_MAIN_TT_GAS;
         currentMenuItem = MENU_TIME;
       } else if (keyPressedTime < KEY_LONG_PRESS_TIME && !keyStillPressed) {
         currentMenuItem ++;
@@ -560,11 +571,8 @@ void readKey(Task* self) {
 }
 
 void speedTicker() {
-  ttOdo.value += wheelSectorLength;
-  ttGas.value += wheelSectorLength;
-  ttTrip.value += wheelSectorLength;
+  speedTickCounter ++;
 }
-
 
 float getOilerDiff() {
   return float(map(oilerInterval, 1 - OILER_STOPPED, OILER_RUNNING - 1 , OILER_INTERVAL_MIN, OILER_INTERVAL_MAX)) / 1000;
@@ -572,7 +580,7 @@ float getOilerDiff() {
 
 void oilerStart() {
   // write '1' to MOSFET
-  digitalWrite(2, HIGH);
+  digitalWrite(13, HIGH);
   
   oilerRunning = true;
   OilerStop.startDelayed();
@@ -583,7 +591,7 @@ boolean oilerStop(Task* self) {
   oilerRunning = false;
   
   // write '0' to MOSFET
-  digitalWrite(2, LOW);
+  digitalWrite(13, LOW);
   return true;
 }
 
